@@ -27,6 +27,7 @@ public partial class MainForm : Form
 
     private bool _textRecorded;
 
+    private CancellationTokenSource? _mainCancellationTokenSource;
     public MainForm()
     {
         InitializeComponent();
@@ -1044,10 +1045,32 @@ public partial class MainForm : Form
     private async Task StopCoreAsync()
     {
         State = State.Stopping;
+    
+        _mainCancellationTokenSource?.Cancel();
         _discoveryNatCts?.Cancel();
         _httpConnectCts?.Cancel();
-        await MainController.StopAsync();
-        State = State.Stopped;
+    
+        try
+        {
+            // timeout to prevent infinite stopping
+            using var timeoutCts = new CancellationTokenSource(TimeSpan.FromSeconds(7));
+            await MainController.StopAsync().WaitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException)
+        {
+            // force stop if timeout reached
+            Log.Warning("MainController.StopAsync() timed out, forcing termination");
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "Error during MainController.StopAsync()");
+        }
+        finally
+        {
+            _mainCancellationTokenSource?.Dispose();
+            _mainCancellationTokenSource = null;
+            State = State.Stopped;
+        }
     }
 
     private bool IsWaiting() => IsWaiting(_state);
