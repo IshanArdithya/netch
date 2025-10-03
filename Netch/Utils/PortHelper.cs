@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.Net.NetworkInformation;
 using System.Net.Sockets;
 using System.Runtime.InteropServices;
+using System.Runtime.Versioning;
 using Windows.Win32;
 using Windows.Win32.NetworkManagement.IpHelper;
 using Netch.Models;
@@ -28,6 +29,7 @@ public static class PortHelper
         }
     }
 
+    [SupportedOSPlatform("windows8.1")]
     internal static IEnumerable<Process> GetProcessByUsedTcpPort(ushort port, AddressFamily inet = AddressFamily.InterNetwork)
     {
         if (port == 0)
@@ -36,33 +38,33 @@ public static class PortHelper
         switch (inet)
         {
             case AddressFamily.InterNetwork:
-            {
-                var process = new List<Process>();
-                unsafe
                 {
-                    uint err;
-                    uint size = 0;
-                    PInvoke.GetExtendedTcpTable(default, ref size, false, (uint)inet, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_LISTENER, 0); // get size
-                    var tcpTable = (MIB_TCPTABLE_OWNER_PID*)Marshal.AllocHGlobal((int)size);
-
-                    if ((err = PInvoke.GetExtendedTcpTable(tcpTable, ref size, false, (uint)inet, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_LISTENER, 0)) !=
-                        0)
-                        throw new Win32Exception((int)err);
-
-                    for (var i = 0; i < tcpTable -> dwNumEntries; i++)
+                    var process = new List<Process>();
+                    unsafe
                     {
-                        var row = tcpTable -> table.ReadOnlyItemRef(i);
+                        uint err;
+                        uint size = 0;
+                        PInvoke.GetExtendedTcpTable(default, ref size, false, (uint)inet, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_LISTENER, 0); // get size
+                        var tcpTable = (MIB_TCPTABLE_OWNER_PID*)Marshal.AllocHGlobal((int)size);
 
-                        if (row.dwOwningPid is 0 or 4)
-                            continue;
+                        if ((err = PInvoke.GetExtendedTcpTable(tcpTable, ref size, false, (uint)inet, TCP_TABLE_CLASS.TCP_TABLE_OWNER_PID_LISTENER, 0)) !=
+                            0)
+                            throw new Win32Exception((int)err);
 
-                        if (PInvoke.ntohs((ushort)row.dwLocalPort) == port)
-                            process.Add(Process.GetProcessById((int)row.dwOwningPid));
+                        for (var i = 0; i < tcpTable->dwNumEntries; i++)
+                        {
+                            var row = tcpTable->table.ReadOnlyItemRef(i);
+
+                            if (row.dwOwningPid is 0 or 4)
+                                continue;
+
+                            if (PInvoke.ntohs((ushort)row.dwLocalPort) == port)
+                                process.Add(Process.GetProcessById((int)row.dwOwningPid));
+                        }
                     }
-                }
 
-                return process;
-            }
+                    return process;
+                }
             case AddressFamily.InterNetworkV6:
                 throw new NotImplementedException();
             default:
